@@ -1,0 +1,46 @@
+<script src="gameIO.js"></script>
+<title>GameIO Online Test</title>
+<script>
+  window.onload = function() {
+    var game = new gameIO();
+    var renderer = new game.renderer();
+		renderer.clearScreen = false;
+    var scene = new game.scene();
+		var controls = new game.keyboard();
+		game.addType(
+			"player",
+			function( obj, packet ) {
+				obj.visual = new game.rectangle( 0, 0, 70, 70, "#00F" );
+				scene.add( obj.visual );
+			}
+		);
+		game.addType(
+			"enemy",
+			function( obj, packet ) {
+				obj.visual = new game.rectangle( 0, 0, packet.size, packet.size, "#F00" );
+				scene.add( obj.visual );
+			}
+		);
+		game.packetFunctions[ "setID" ] = function( packet ) {
+			for( var i = 0; i < game.objects.length; i++ ) {
+        if( game.objects[ i ].id == packet.id ) {
+          game.me = game.objects[ i ];
+        }
+      }
+			scene.camera.position = game.me.visual.position;
+    };
+		game.createSocket( "ws://localhost:5000" );
+    function main() {
+			if( controls.changed ) {
+				controls.changed = false;
+				if( game.ws.readyState == 1 )
+					game.currentPackets.push( { type: "updateControls", object: controls } );
+			}
+			game.update();
+			renderer.clear();
+      renderer.render( scene );
+      requestFrame( main );
+    }
+    main();
+  }
+</script>

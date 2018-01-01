@@ -1,0 +1,46 @@
+<script src="gameIO.js"></script>
+<title>Multiplayer Physics</title>
+<script>
+	var game = new gameIO();
+  window.onload = function() {
+    var renderer = new game.renderer();
+		renderer.clearScreen = false;
+    var scene = new game.scene();
+		var background = new game.scene();
+		scene.add( new game.rectangle( 0, 540 - 40, 1920, 150, "#000" ) );
+		scene.add( new game.rectangle( 960 - 40, 0, 150, 1080, "#000" ) );
+		scene.add( new game.rectangle( 0, -540 + 40, 1920, 150, "#000" ) );
+		scene.add( new game.rectangle( -960 + 40, 0, 150, 1080, "#000" ) );
+		var controls = new game.keyboard();
+		game.addType(
+			"player",
+			function( obj, packet ) {
+				obj.visual = new game.circle( 0, 0, 70, packet.color );
+				background.add( obj.visual );
+			}
+		);
+		game.addType(
+			"ball",
+			function( obj, packet ) {
+				obj.visual = new game.circle( 0, 0, 40, "#000" );
+				scene.add( obj.visual );
+			}
+		);
+		game.createSocket( "ws://localhost:5000" );
+    function main() {
+			if( controls.changed ) {
+				controls.changed = false;
+				controls.changedKeys.forEach( function( key ) {
+					game.currentPackets.push( { type : "updateControls", object : { key : key, state : controls[ key ] } } );
+				} );
+				controls.changedKeys = [];
+			}
+			game.update();
+			renderer.clear();
+			renderer.render( background );
+      renderer.render( scene );
+      requestFrame( main );
+    }
+    main();
+  }
+</script>
