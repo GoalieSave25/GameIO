@@ -15,6 +15,8 @@ To download node, visit http://nodejs.org/
 
 A step by step series of examples that tell you have to get a development env running on Windows
 
+Note that this will only with with gameio 0.0.4
+
 Download this repository on your machine and extract it
 
 Open command prompt and cd to the directory you extracted to + \server, so you would type something like this in your console:
@@ -23,7 +25,7 @@ Open command prompt and cd to the directory you extracted to + \server, so you w
 cd C:\Users\MrUser\Desktop\gameio\server
 ```
 
-Then type "npm install gameio" and press enter to download the latest version of the GameIO server which is also open-source on NPM
+Then type "npm install gameio@0.0.4" and press enter to download the latest version of the GameIO server which is also open-source on NPM
 
 After that, you can finally type "node example1.js" or "node example2.js" to run one of the examples
 Then navigate to the client folder and open the corresponding example
