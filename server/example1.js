@@ -1,5 +1,10 @@
 var gameIO = require( "gameio" );
-var game = new gameIO.game();
+var express = require( "express" );
+var app = express();
+app.get( "/status", function( req, res ) {
+	res.send( "ok" );
+} );
+var game = new gameIO.game( { port : 80, enablews : false, app : app } );
 game.addType(
     // Type
     "player",
@@ -60,7 +65,8 @@ for( var i = 0; i < 100; i++ ) {
     game.create( "enemy" );
 }
 game.wsopen = function( ws ) {
-    if( ws.self === undefined )
+  console.log( "Client Connected" );
+    if( ws.self === undefined || ws.self.type == "spectator" )
         ws.self = game.create( "player" );
 }
 game.wsclose = function( ws ) {
@@ -74,7 +80,7 @@ game.addPacketType(
         }
     }
 );
-game.addPacketType(
+/*game.addPacketType(
     "getObject",
     function( packet, ws ) {
         if( ws.currentPackets === undefined )
@@ -92,5 +98,5 @@ game.addPacketType(
         if( ws.self !== undefined )
             ws.currentPackets.push( { type : "setID", id : ws.self.id } );
     }
-);
+);*/
 game.start();

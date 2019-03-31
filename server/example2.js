@@ -1,5 +1,11 @@
-var gameIO = require( "gameIO" );
-var game = new gameIO.game();
+var gameIO = require( "gameio" );
+var express = require( "express" );
+var app = express();
+app.get( "/status", function( req, res ) {
+	res.send( "ok" );
+} );
+var game = new gameIO.game( { port : 80, enablews : false, app : app } );
+
 function getRandomColor() {
   var letters = '0123456789ABCDEF';
   var color = '#';
@@ -121,7 +127,7 @@ game.addPacketType(
         }
     }
 );
-game.addPacketType(
+/*game.addPacketType(
     "getObject",
     function( packet, ws ) {
         if( ws.currentPackets === undefined )
@@ -139,7 +145,7 @@ game.addPacketType(
         if( ws.self !== undefined )
             ws.currentPackets.push( { type : "setID", id : ws.self.id } );
     }
-);
+);*/
 game.addCollision( "player", "ball",
     function( player, ball ) {
         ball.body.velocity[ 0 ] *= 0.6;
