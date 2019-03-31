@@ -1,9 +1,3 @@
-var requestFrame = ( window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame ||
-  window.oRequestAnimationFrame || window.msRequestAnimationFrame ||
-  function( callback ) {
-    window.setTimeout(callback, 1000 / 60);
-  }
-);
 var fps = { startTime : 0, frameNumber : 0, getFPS : function() { this.frameNumber++; var d = new Date().getTime(), currentTime = ( d - this.startTime ) / 1000, result = Math.floor( ( this.frameNumber / currentTime ) ); if( currentTime > 1 ) { this.startTime = new Date().getTime(); this.frameNumber = 0; } return result; } };
 function gameIO() {
 
@@ -12,7 +6,8 @@ function gameIO() {
   var game = {
     renderers : [],
     scenes : [],
-    particles : []
+    particles : [],
+    envs : {}
   };
   game.gamepad = function() {
     var gamepads = [];
@@ -43,14 +38,23 @@ function gameIO() {
 		mouse.changed = false;
 		mouse.rightChanged = true;
 		mouse.moved = false;
+		mouse.locked = false;
+		mouse.client = new game.Vector2( 0, 0 );
         window.addEventListener( "mousemove", function( event ) {
-            mouse.x = event.clientX;
-            mouse.y = event.clientY;
-    		mouse.moved = true;
-            if( mouse.renderer !== undefined ) {
-                mouse.x = Math.max( Math.min( ( mouse.x - mouse.renderer.c.width / 2 - mouse.renderer.left ) * mouse.renderer.ratio, 1920 / 2 ), -1920 / 2 );
-                mouse.y = Math.max( Math.min( ( mouse.y - mouse.renderer.c.height / 2 - mouse.renderer.top ) * mouse.renderer.ratio, 1080 / 2 ), -1080 / 2 );
+            if( mouse.locked ) {
+              mouse.client.x += event.movementX;
+              mouse.client.y += event.movementY;
+              mouse.client.x = Math.max( Math.min( mouse.client.x, window.innerWidth ), 0 );
+              mouse.client.y = Math.max( Math.min( mouse.client.y, window.innerHeight ), 0 );
+              mouse.x = mouse.client.x;
+              mouse.y = mouse.client.y;
+            } else {
+              mouse.x = event.clientX;
+              mouse.y = event.clientY;
+              mouse.client.x = mouse.x;
+              mouse.client.y = mouse.y;
             }
+    		    mouse.moved = true;
     } );
     window.addEventListener( "mousedown", function( event ) {
 			if( event.button === 0 ) {
@@ -61,9 +65,19 @@ function gameIO() {
 				mouse.rightClicking = true
 				mouse.rightChanged = true;
 			}
+			else if( event.button > 2 ) {
+			  event.preventDefault();
+			}
+    } );
+    window.addEventListener( "click", function( event ) {
+      if( event.button > 2 ) {
+        event.preventDefault();
+      }
     } );
 		window.addEventListener( "contextmenu", function( event ) {
 			event.preventDefault();
+			if( event.stopPropagation != undefined )
+				event.stopPropagation();
 		} );
 		window.addEventListener( "mouseup", function( event ) {
 			if( event.button === 0 ) {
@@ -73,6 +87,10 @@ function gameIO() {
 			else if( event.button == 2 ) {
 				mouse.rightClicking = false;
 				mouse.rightChanged = true;
+			}
+			else if( event.button > 2 ) {
+			  // This one works
+			  event.preventDefault();
 			}
     } );
     mouse.fromRenderer = function( renderer ) {
@@ -123,9 +141,9 @@ function gameIO() {
       canvas = document.createElement( "canvas" );
       canvas.style.position = "absolute";
       document.body.appendChild( canvas );
-      document.body.style.margin = "0";
+      /*document.body.style.margin = "0";
       document.body.style.padding = "0";
-      document.body.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";*/
     }
     game.renderers.push( {
       ctx: canvas.getContext( '2d' ),
@@ -139,6 +157,8 @@ function gameIO() {
       bottomOfScreen: 0,
       position: new game.Vector2( 0, 0 ),
       ratio: 1,
+      qualitySize: 1,
+      smoothingEnabled: true,
       render: function( scene ) {
         this.ctx.setTransform( 1, 0, 0, 1, 0, 0 );
         if( this.clearScreen )
@@ -149,9 +169,15 @@ function gameIO() {
       clear: function() {
         this.ctx.setTransform( 1, 0, 0, 1, 0, 0 );
         this.ctx.clearRect( 0, 0, this.c.width, this.c.height );
+      },
+      drawBackground: function() {
+        this.ctx.setTransform( 1, 0, 0, 1, 0, 0 );
+        this.ctx.fillStyle = "#000";
+        this.ctx.globalAlpha = 1;
+        this.ctx.fillRect( 0, 0, this.c.width, this.c.height );
       }
     } );
-    game.renderers[ game.renderers.length - 1 ].ctx.imageSmoothingEnabled = false;
+    game.renderers[ game.renderers.length - 1 ].ctx.imageSmoothingEnabled = true;
     game.resize();
     game.resize();
     return game.renderers[ game.renderers.length - 1 ];
@@ -160,6 +186,7 @@ function gameIO() {
     if ( ip === undefined )
       return null;
     var socket = new WebSocket( ip );
+    socket.binaryType = "arraybuffer";
     socket.onmessage = onmessage || function() {};
     socket.onopen = onopen || function() {};
     socket.onclose = onclose || function() {};
@@ -169,6 +196,7 @@ function gameIO() {
   game.resize = function() {
     var renderSize = 1;
     game.renderers.forEach( function( renderer ) {
+      renderSize = renderer.qualitySize;
       if ( document.body.clientWidth / renderer.c.width <= document.body.clientHeight / renderer.c.height ) {
         renderer.c.height = document.body.clientHeight;
         renderer.c.width = renderer.c.height * 16 / 9;
@@ -197,7 +225,7 @@ function gameIO() {
       renderer.c.width /= renderSize;
       renderer.c.height /= renderSize;
       renderer.ratio *= renderSize;
-      renderer.ctx.imageSmoothingEnabled = false;
+      renderer.ctx.imageSmoothingEnabled = renderer.smoothingEnabled;
     } );
   };
   window.addEventListener( 'resize', game.resize, false );
@@ -208,6 +236,7 @@ function gameIO() {
       opacity : 1,
       rotation : 0,
       type : "object",
+      background : false,
       parent : null,
       objects : [],
       belowObjects : [],
@@ -239,10 +268,12 @@ function gameIO() {
         }
       },
       render : function( ctx, ratio, opacity ) {
-        this.opacity = Math.min( Math.max( 0, this.opacity ), 1 );
+        //this.opacity = Math.min( Math.max( 0, this.opacity ), 1 );
 				opacity = Math.min( Math.max( 0, opacity ), 1 );
 				var size = this.size;
-        opacity = this.opacity * opacity;
+        opacity = Math.min( this.opacity * opacity, 1 );
+        if( opacity <= 0 )
+          return;
         ctx.translate( this.position.x / ratio, this.position.y / ratio );
         ctx.rotate( this.rotation );
         this.belowObjects.forEach( function( object ) {
@@ -270,11 +301,14 @@ function gameIO() {
     element.opacity = opacity || 1;
     element.type = "image";
     element.renderSpecific = function( ctx, ratio ) {
-      ctx.drawImage( this.image, -this.width / 2 / ratio, -this.height / 2 / ratio, this.width / ratio, this.height / ratio );
+      try {
+        ctx.drawImage( this.image, -this.width / 2 / ratio, -this.height / 2 / ratio, this.width / ratio, this.height / ratio );
+      } catch(e) {
+      }
     }
     return element;
   }
-  game.text = function( text, x, y, fillStyle, font, fontSize, otherParams, opacity ) {
+  game.text = function( text, x, y, fillStyle, font, fontSize, otherParams, opacity, align ) {
     var element = new game.object();
     element.text = text || "";
     element.position = new game.Vector2( x || 0, y || 0 );
@@ -285,12 +319,57 @@ function gameIO() {
     element.opacity = opacity || 1;
     element.type = "text";
 		element.width = 0;
+		element.align = align || "center";
     element.renderSpecific = function( ctx, ratio ) {
       ctx.font = this.otherParams + " "  +  this.fontSize / ratio + "px " + this.font;
       var width = ctx.measureText( this.text ).width;
 			element.width = width * ratio;
       ctx.fillStyle = this.fillStyle;
-      ctx.fillText( this.text, Math.floor( -width / 2 ), this.fontSize / 3 / ratio );
+      switch( element.align ) {
+        case "right":
+          ctx.fillText( this.text, Math.floor( -width ), this.fontSize / 3 / ratio );
+          break;
+        case "left":
+          ctx.fillText( this.text, 0, this.fontSize / 3 / ratio );
+          break;
+        default:
+          ctx.fillText( this.text, Math.floor( -width / 2 ), this.fontSize / 3 / ratio );
+          break;
+      }
+    }
+    return element;
+  }
+  game.strokeText = function( text, x, y, strokeStyle, font, fontSize, otherParams, opacity, align ) {
+    var element = new game.object();
+    element.text = text || "";
+    element.position = new game.Vector2( x || 0, y || 0 );
+    element.strokeStyle = strokeStyle || "#000";
+    element.font = font || "Arial";
+    element.fontSize = fontSize || 30;
+    element.otherParams = otherParams || "";
+    element.opacity = opacity || 1;
+    element.type = "text";
+		element.width = 0;
+		element.align = align || "center";
+		element.lineWidth = 2;
+    element.renderSpecific = function( ctx, ratio ) {
+      ctx.miterLimit = 0.1;
+      ctx.font = this.otherParams + " "  +  this.fontSize / ratio + "px " + this.font;
+      var width = ctx.measureText( this.text ).width;
+			element.width = width * ratio;
+      ctx.strokeStyle = this.strokeStyle;
+      ctx.lineWidth = this.lineWidth * this.size / ratio;
+      switch( element.align ) {
+        case "right":
+          ctx.strokeText( this.text, Math.floor( -width ), this.fontSize / 3 / ratio );
+          break;
+        case "left":
+          ctx.strokeText( this.text, 0, this.fontSize / 3 / ratio );
+          break;
+        default:
+          ctx.strokeText( this.text, Math.floor( -width / 2 ), this.fontSize / 3 / ratio );
+          break;
+      }
     }
     return element;
   }
@@ -547,6 +626,22 @@ function gameIO() {
     }
     return element;
   }
+  game.strokeRectangle = function( x, y, width, height, color, lineWidth, opacity ) {
+    var element = new game.object();
+    element.position = new game.Vector2( x || 0, y || 0 );
+    element.width = width || 100;
+    element.height = height || 100;
+    element.color = color || "#000000";
+    element.opacity = opacity || 1;
+    element.lineWidth = lineWidth || 5;
+    element.type = "rectangle";
+    element.renderSpecific = function( ctx, ratio ) {
+      ctx.strokeStyle = this.color;
+      ctx.lineWidth = this.lineWidth * this.size / ratio;
+      ctx.strokeRect( -this.width * this.size / 2 / ratio, - this.height * this.size / 2 / ratio, this.width * this.size / ratio, this.height * this.size / ratio );
+    }
+    return element;
+  }
 	game.roundRectangle = function( x, y, width, height, radius, color ) {
 		var element = new game.object();
 		element.position = new game.Vector2( x || 0, y || 0 );
@@ -555,7 +650,9 @@ function gameIO() {
     element.color = color || "#000000";
     element.radius = radius || 0;
     element.type = "roundRectangle";
-    element.renderSpecific = function( ctx, ratio ) {
+    element.strokeStyle = -1;
+    element.lineWidth = 4;
+    /*element.renderSpecific = function( ctx, ratio ) {
       ctx.fillStyle = this.color;
 			ctx.beginPath();
 			ctx.moveTo( (-this.width/2+this.radius)*this.size/ratio, -this.height*this.size/2/ratio);
@@ -568,6 +665,41 @@ function gameIO() {
 			ctx.lineTo(-this.width*this.size/2/ratio, (-this.height/2+this.radius)*this.size/ratio);
 			ctx.quadraticCurveTo(-this.width*this.size/2/ratio, -this.height*this.size/2/ratio, (-this.width/2+this.radius)*this.size/ratio, -this.height*this.size/2/ratio);
 			ctx.fill();
+    }*/
+    element.renderSpecific = function( ctx, ratio ) {
+      ctx.fillStyle = this.color;
+			ctx.beginPath();
+			ctx.moveTo( (-this.width/2+this.radius)*this.size/ratio, -this.height*this.size/2/ratio);
+			ctx.lineTo( (this.width/2-this.radius)*this.size/ratio, -this.height*this.size/2/ratio);
+			ctx.arc( (this.width/2-this.radius)*this.size/ratio, (-this.height/2+this.radius)*this.size/ratio, this.radius*this.size/ratio, Math.PI * 3 / 2, Math.PI * 2);
+			ctx.lineTo(this.width*this.size/2/ratio, (this.height/2-this.radius)*this.size/ratio);
+			ctx.arc( (this.width/2-this.radius)*this.size/ratio, (this.height/2-this.radius)*this.size/ratio, this.radius*this.size/ratio, 0, Math.PI / 2);
+			ctx.lineTo((-this.width/2+this.radius)*this.size/ratio, this.height*this.size/2/ratio);
+			ctx.arc( (-this.width/2+this.radius)*this.size/ratio, (this.height/2-this.radius)*this.size/ratio, this.radius*this.size/ratio, Math.PI / 2, Math.PI);
+			ctx.lineTo(-this.width*this.size/2/ratio, (-this.height/2+this.radius)*this.size/ratio);
+			ctx.arc( (-this.width/2+this.radius)*this.size/ratio, (-this.height/2+this.radius)*this.size/ratio, this.radius*this.size/ratio, Math.PI, Math.PI * 3 / 2);
+			ctx.fill();
+			if( this.strokeStyle != -1 ) {
+			  ctx.strokeStyle = this.strokeStyle;
+			  ctx.lineWidth = this.lineWidth * this.size / ratio;
+			  var oldWidth = this.width;
+			  var oldHeight = this.height;
+			  this.width -= this.lineWidth / 2;
+			  this.height -= this.lineWidth / 2;
+			  ctx.beginPath();
+				ctx.moveTo( (-this.width/2+this.radius)*this.size/ratio, -this.height*this.size/2/ratio);
+				ctx.lineTo( (this.width/2-this.radius)*this.size/ratio, -this.height*this.size/2/ratio);
+				ctx.arc( (this.width/2-this.radius)*this.size/ratio, (-this.height/2+this.radius)*this.size/ratio, this.radius*this.size/ratio, Math.PI * 3 / 2, Math.PI * 2);
+				ctx.lineTo(this.width*this.size/2/ratio, (this.height/2-this.radius)*this.size/ratio);
+				ctx.arc( (this.width/2-this.radius)*this.size/ratio, (this.height/2-this.radius)*this.size/ratio, this.radius*this.size/ratio, 0, Math.PI / 2);
+				ctx.lineTo((-this.width/2+this.radius)*this.size/ratio, this.height*this.size/2/ratio);
+				ctx.arc( (-this.width/2+this.radius)*this.size/ratio, (this.height/2-this.radius)*this.size/ratio, this.radius*this.size/ratio, Math.PI / 2, Math.PI);
+				ctx.lineTo(-this.width*this.size/2/ratio, (-this.height/2+this.radius)*this.size/ratio);
+				ctx.arc( (-this.width/2+this.radius)*this.size/ratio, (-this.height/2+this.radius)*this.size/ratio, this.radius*this.size/ratio, Math.PI, Math.PI * 3 / 2);
+			  ctx.stroke();
+			  this.width = oldWidth;
+			  this.height = oldHeight;
+			}
     }
     return element;
 	}
@@ -597,16 +729,27 @@ function gameIO() {
       new game.Vector2( 0, -40 ),
       new game.Vector2( 50, 40 ) ]
     element.color = color || "#000000";
+    element.shouldStroke = false;
+    element.strokeColor = "#000000";
+    element.lineWidth = 3;
     element.type = "polygon";
     element.renderSpecific = function( ctx, ratio ) {
+      var oldMiter = ctx.miterLimit;
+      ctx.miterLimit = 10;
       ctx.fillStyle = this.color;
+      ctx.lineWidth = this.lineWidth * this.size / ratio;
       ctx.beginPath();
-      ctx.moveTo( this.points[ 0 ].x / ratio, this.points[ 0 ].y / ratio );
+      ctx.moveTo( this.points[ 0 ].x * this.size / ratio, this.points[ 0 ].y * this.size / ratio );
       for( var i = 1; i < this.points.length; i++ ) {
-        ctx.lineTo( this.points[ i ].x / ratio, this.points[ i ].y / ratio );
+        ctx.lineTo( this.points[ i ].x * this.size / ratio, this.points[ i ].y * this.size / ratio );
       }
       ctx.closePath();
+      if( this.shouldStroke ) {
+        ctx.strokeStyle = this.strokeColor;
+        ctx.stroke();
+      }
       ctx.fill();
+      ctx.miterLimit = oldMiter;
     }
     return element;
   }
@@ -691,20 +834,23 @@ function gameIO() {
     game.particles.push( obj );
     return obj;
   }
-	game.customParticle = function( obj, turn, opacityFade, xVelocity, yVelocity ) {
+	game.customParticle = function( obj, turn, opacityFade, xVelocity, yVelocity, widthFade, heightFade ) {
     obj.turn = turn || ( Math.floor( Math.random() * 2 ) - 0.5 ) * 0.2;
     obj.opacityFade = opacityFade || 1;
     obj.rotation = Math.random() * Math.PI * 2;
     obj.velocity = new game.Vector2( xVelocity || 0, yVelocity || 0 );
+    obj.widthFade = widthFade || 1;
+    obj.heightFade = heightFade || 1;
     obj.type = "particle";
+    obj.opacityThreshold = 0;
     obj.update = function( dt ) {
       obj.rotation += obj.turn * dt;
-      obj.width -= 0.2 * dt;
-      obj.height -= 0.2 * dt;
+      obj.width -= 0.4 * dt * obj.widthFade;
+      obj.height -= 0.4 * dt * obj.heightFade;
       obj.opacity -= 0.02 * dt * obj.opacityFade;
       obj.position.x += obj.velocity.x * dt;
       obj.position.y += obj.velocity.y * dt;
-      if( obj.opacity <= 0 && game.particles.indexOf( obj ) != -1 ) {
+      if( obj.opacity <= obj.opacityThreshold && game.particles.indexOf( obj ) != -1 ) {
         game.particles.splice( game.particles.indexOf( obj ), 1 );
         if( obj.parent != null )
           obj.parent.remove( obj );
@@ -760,10 +906,13 @@ function gameIO() {
 		game.ws.binaryType = "arraybuffer";
   }
 
+  game.hasEnvs = false;
+
   game.serverDetails = {
     lastFrame : Date.now(),
     thisFrame : Date.now(),
     dt : 1,
+    dtArray : [ 5.2, 5.2, 5.2, 5.2, 5.2, 5.2, 5.2, 5.2, 5.2, 5.2, 5.2 ],
     ticksSincePacket : 0
   };
 
@@ -790,13 +939,16 @@ function gameIO() {
 	}
 
   game.selfExists = function() {
+      if( !game.hasEnvs ) {
+          game.currentPackets.push( { type : "getEnvs" } );
+      }
     for( var i = 0; i < game.objects.length; i++ ) {
       if( game.objects[ i ].id == game.me.id ) {
         return true;
       }
     }
     if( game.ws.readyState == 1 ) {
-      game.ws.send( game.toBuffer( JSON.stringify( [ { type: "getID" } ] ) ) );
+      game.currentPackets.push( { type: "getID" } );
     }
   }
 
@@ -810,9 +962,9 @@ function gameIO() {
 			return true;
 	}
 
-  game.lerp = function( initialValue, newValue ) {
-		if( game.serverDetails.ticksSincePacket > game.serverDetails.dt + 1 )
-			return newValue;
+	game.lerp = function( initialValue, newValue ) {
+		if( game.serverDetails.ticksSincePacket > game.serverDetails.dt + 5 )
+			return ( newValue - initialValue ) / game.serverDetails.dt * ( game.serverDetails.dt + 5 ) + initialValue;
 		return ( newValue - initialValue ) / game.serverDetails.dt * game.serverDetails.ticksSincePacket + initialValue;
 	}
 
@@ -827,6 +979,10 @@ function gameIO() {
 
   game.askForObj = function( id ) {
     game.currentPackets.push( { type: "getObject", object: { id: id } } );
+  }
+
+  game.onGetEnvs = function( envs ) {
+
   }
 
   game.packetFunctions = {
@@ -846,11 +1002,15 @@ function gameIO() {
       var obj = {
         new : {
           position: new game.Vector2( packet.x, packet.y ),
-          rotation: packet.a
+          rotation: packet.a / 100
         },
         old : {
           position: new game.Vector2( packet.x, packet.y ),
-          rotation: packet.a
+          rotation: packet.a / 100
+        },
+        actualOld : {
+          position: new game.Vector2( packet.x, packet.y ),
+          rotation: packet.a / 100
         },
         id : packet.i,
 				ticksAsleep : 0,
@@ -858,6 +1018,9 @@ function gameIO() {
         type : packet.b,
 				needsUpdate : packet.n
       };
+      if( game.types[ packet.b ] === undefined ) {
+      	console.log( packet.b );
+      }
       game.types[ packet.b ].create( obj, packet );
 			obj.visual.position.x = obj.new.position.x;
 			obj.visual.position.y = obj.new.position.y;
@@ -867,16 +1030,34 @@ function gameIO() {
     },
 		// Update
     "y" : function( packet ) {
-      if( game.getObj( packet.i ) == null ) {
-        game.askForObj( packet.i );
+      if( game.getObj( packet.a[ 0 ] ) == null ) {
+        game.askForObj( packet.a[ 0 ] );
         return;
       }
-      var obj = game.getObj( packet.i );
+      var obj = game.getObj( packet.a[ 0 ] );
 			obj.ticksAsleep = 0;
       obj.old.position = obj.visual.position.clone();
       obj.old.rotation = obj.visual.rotation;
-      obj.new.position = new game.Vector2( packet.x, packet.y );
-      obj.new.rotation = packet.a;
+      obj.actualOld.position = obj.new.position.clone();
+      obj.actualOld.rotation = obj.new.rotation;
+      obj.new.position = new game.Vector2( packet.a[ 1 ], packet.a[ 2 ] );
+      if( isNaN( obj.old.position.x ) ) {
+        obj.old.position.x = obj.new.position.x;
+        obj.actualOld.position.x = obj.new.position.x;
+        console.log( "NaN X Value" );
+      }
+      if( isNaN( obj.old.position.y ) ) {
+        obj.old.position.y = obj.new.position.y;
+        obj.actualOld.position.y = obj.new.position.y;
+        console.log( "NaN Y Value" );
+      }
+      if( Math.abs( obj.visual.position.x - obj.new.position.x ) < 0.3 ) {
+			  obj.old.position.x = obj.new.position.x;
+			}
+			if( Math.abs( obj.visual.position.y - obj.new.position.y ) < 0.3 ) {
+			  obj.old.position.y = obj.new.position.y;
+			}
+      obj.new.rotation = packet.a[ 3 ] / 100;
 			if( Math.abs( obj.old.rotation - obj.new.rotation ) > Math.PI ) {
 				if( obj.old.rotation > obj.new.rotation )
 					obj.old.rotation -= Math.PI * 2;
@@ -890,16 +1071,26 @@ function gameIO() {
     "z" : function( packet ) {
       for( var i = 0; i < game.objects.length; i++ ) {
         if( game.objects[ i ].id == packet.i ) {
-          game.types[ game.objects[ i ].type ].remove( game.objects[ i ] );
+          if( game.types[ game.objects[ i ].type ].remove( game.objects[ i ], packet ) )
+            return;
           if( game.objects[ i ].visual.parent != null )
             game.objects[ i ].visual.parent.remove( game.objects[ i ].visual );
           game.objects.splice( i, 1 );
+          break;
         }
+      }
+    },
+    // Get envs
+    "e" : function( packet ) {
+      if( !game.hasEnvs ) {
+        game.hasEnvs = true;
+        game.envs = packet.envs;
+        game.onGetEnvs( game.envs );
       }
     }
   };
 	game.addPacketType = function( type, func ) {
-		game.packetTypes[ type ] = func;
+		game.packetFunctions[ type ] = func;
 	}
   game.types = [];
   game.objects = [];
@@ -907,24 +1098,33 @@ function gameIO() {
 
   game.messageEvent = function( message ) {
     game.serverDetails.thisFrame = Date.now();
-    game.serverDetails.dt = Math.max( Math.min( ( game.serverDetails.thisFrame - game.serverDetails.lastFrame ) / 16, 10 ), 5);
+    /*for( var i = 0; i < game.serverDetails.dtArray.length - 1; i++ ) {
+      game.serverDetails.dtArray[ i ] = game.serverDetails.dtArray[ i + 1 ];
+    }
+    game.serverDetails.dtArray[ game.serverDetails.dtArray.length - 1 ] = Math.max( Math.min( ( game.serverDetails.thisFrame - game.serverDetails.lastFrame ) / 16, 8.2 ), 2.2 );
+    var sum = 0;
+    for( var i = 0; i < game.serverDetails.dtArray.length; i++ ) {
+      sum += game.serverDetails.dtArray[ i ];
+    }
+    game.serverDetails.dt = sum / game.serverDetails.dtArray.length;*/
+    game.serverDetails.dt = 5.5; //4.6
     game.serverDetails.lastFrame = game.serverDetails.thisFrame;
-		try {
-			var packets = JSON.parse( game.fromBuffer( message.data ) );
-			for( var i = 0; i < packets.length; i++ ) {
-				var packet = packets[i];
-				if( game.packetFunctions[ packet.t ] !== undefined )
-					game.packetFunctions[ packet.t ]( packet );
-				else {
-					console.log( "Encountered issue: unknown packet type " + packet.t );
-					console.log( packets );
-                    console.log( new Error().stack );
-				}
-			}
-			game.particles.forEach( function( particle ) {
+		//try {
+		  if( msgpack !== undefined ) {
+  			var packets = msgpack.decode( new Uint8Array( message.data ) );
+  			for( var i = 0; i < packets.length; i++ ) {
+  				var packet = packets[i];
+  				if( game.packetFunctions[ packet.t ] !== undefined )
+  					game.packetFunctions[ packet.t ]( packet );
+  				else {
+  					console.log( "Encountered issue: unknown packet type" );
+  					console.log( packets );
+  				}
+  			}
+		  }
+			/*game.particles.forEach( function( particle ) {
 				particle.update( 1 );
-			} );
-			game.serverDetails.ticksSincePacket = 0;
+			} );*/
 			for( var i = 0; i < game.objects.length; i++ ) {
 				game.objects[ i ].ticksAsleep++;
 				if( game.usedIDs.indexOf( game.objects[ i ].id ) == -1 ) {
@@ -932,8 +1132,9 @@ function gameIO() {
 					game.objects[ i ].old.position.y = game.objects[ i ].visual.position.y;
 					game.objects[ i ].old.rotation = game.objects[ i ].visual.rotation;
 				}
-				if( ( ( game.objects[ i ].needsUpdate && ( game.objects[ i ].ticksAsleep >= 22 && ( game.objects[ i ].old.position.x == game.objects[ i ].new.position.x && game.objects[ i ].old.position.y == game.objects[ i ].new.position.y && game.objects[ i ].old.rotation == game.objects[ i ].new.rotation ) ) ) || ( !game.objects[ i ].needsUpdate && game.objects[ i ].ticksAsleep >= 120 && !game.notUpdatedIsClose( game.objects[ i ] ) ) ) && game.usedIDs.indexOf( game.objects[ i ].id ) == -1 ) {
-					game.types[ game.objects[ i ].type ].remove( game.objects[ i ] );
+				if( ( ( game.objects[ i ].needsUpdate && ( game.objects[ i ].ticksAsleep > 201 && ( game.objects[ i ].old.position.x == game.objects[ i ].new.position.x && game.objects[ i ].old.position.y == game.objects[ i ].new.position.y && game.objects[ i ].old.rotation == game.objects[ i ].new.rotation ) ) ) || ( !game.objects[ i ].needsUpdate && game.objects[ i ].ticksAsleep >= 120 && !game.notUpdatedIsClose( game.objects[ i ] ) ) ) && game.usedIDs.indexOf( game.objects[ i ].id ) == -1 ) {
+					if( game.types[ game.objects[ i ].type ].remove( game.objects[ i ], {} ) )
+						continue;
 					if( game.objects[ i ].visual.parent != null )
 						game.objects[ i ].visual.parent.remove( game.objects[ i ].visual );
 					game.objects.splice( i, 1 );
@@ -941,13 +1142,15 @@ function gameIO() {
 			}
 			game.usedIDs = [];
 			game.selfExists();
-		} catch( e ) {
+			game.serverDetails.ticksSincePacket = 0;
+		/*} catch( e ) {
             console.log( "Caught Error, plx report" );
-		}
+		}*/
   }
   game.update = function() {
-    var currentFPS = fps.getFPS();
+    var currentFPS = Math.max( fps.getFPS(), 30 );
     game.serverDetails.ticksSincePacket += 1 / ( currentFPS / 60 );
+    //game.serverDetails.ticksSincePacket += 1;
     for( var i = 0; i < game.objects.length; i++ ) {
       var obj = game.objects[ i ];
       obj.visual.rotation = game.lerp( obj.old.rotation, obj.new.rotation );
@@ -956,13 +1159,13 @@ function gameIO() {
       game.types[ obj.type ].tickUpdate( obj );
     }
     game.clientDetails.thisFrame = Date.now();
-    game.clientDetails.dt = ( game.clientDetails.thisFrame - game.clientDetails.lastFrame ) / 16.67;
+    game.clientDetails.dt = Math.min( ( game.clientDetails.thisFrame - game.clientDetails.lastFrame ) / 16.67, 2 );
     game.clientDetails.lastFrame = game.clientDetails.thisFrame;
     game.particles.forEach( function( particle ) {
-      particle.update( game.clientDetails.dt );
+      particle.update( game.clientDetails.dt * 1.2 );
     } );
 		if( game.ws.readyState == 1 && game.currentPackets.length > 0 ) {
-			game.ws.send( game.toBuffer( JSON.stringify( game.currentPackets ) ) );
+			game.ws.send( msgpack.encode( game.currentPackets ) );
 			game.currentPackets = [];
 		}
   }
@@ -984,3 +1187,11 @@ function gameIO() {
 	);
   return game;
 }
+requestFrame = function(callback) {
+  (window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame ||
+    window.oRequestAnimationFrame || window.msRequestAnimationFrame ||
+    function( callback ) {
+      setTimeout(callback, 1000 / 60);
+    }
+  )(callback);
+};

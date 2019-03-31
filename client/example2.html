@@ -1,4 +1,5 @@
-<script src="gameIO.js"></script>
+<script src="gameio.js"></script>
+<script src="msgpack.js"></script>
 <title>Multiplayer Physics</title>
 <script>
 	var game = new gameIO();
@@ -26,7 +27,7 @@
 				scene.add( obj.visual );
 			}
 		);
-		game.createSocket( "ws://localhost:5000" );
+		game.createSocket( "ws://localhost/ws" );
     function main() {
 			if( controls.changed ) {
 				controls.changed = false;

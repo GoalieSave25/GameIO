@@ -1,4 +1,5 @@
-<script src="gameIO.js"></script>
+<script src="gameio.js"></script>
+<script src="msgpack.js"></script>
 <title>GameIO Online Test</title>
 <script>
   window.onload = function() {
@@ -29,7 +30,7 @@
       }
 			scene.camera.position = game.me.visual.position;
     };
-		game.createSocket( "ws://localhost:5000" );
+		game.createSocket( "ws://localhost/ws" );
     function main() {
 			if( controls.changed ) {
 				controls.changed = false;
